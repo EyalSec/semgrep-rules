@@ -1,0 +1,58 @@
+rules:
+- id: tarfile-extractall-without-filter
+  message: >-
+    A tar archive is extracted without an extraction filter. Before Python
+    3.14, tarfile trusts member names, links and permissions by default, so an
+    archive can write outside the target directory ("../" names, absolute
+    paths, symlinks) or create device files. Pass filter="data" (Python 3.12,
+    and security releases of 3.8 to 3.11) or check every member before
+    extracting it.
+  metadata:
+    category: security
+    subcategory:
+    - vuln
+    cwe:
+    - "CWE-22: Improper Limitation of a Pathname to a Restricted Directory ('Path Traversal')"
+    owasp:
+    - "A01:2021 - Broken Access Control"
+    - "A01:2025 - Broken Access Control"
+    technology:
+    - python
+    references:
+    - https://eyalsec.com/vulnerabilities/path-traversal
+    - https://docs.python.org/3/library/tarfile.html#extraction-filters
+    - https://peps.python.org/pep-0706/
+    likelihood: MEDIUM
+    impact: HIGH
+    confidence: MEDIUM
+    vulnerability_class:
+    - Path Traversal
+  languages:
+  - python
+  severity: WARNING
+  patterns:
+  - pattern-either:
+    - pattern: $TAR.extractall(...)
+    - pattern: $TAR.extract(...)
+  - pattern-either:
+    - pattern-inside: |
+        $TAR = tarfile.open(...)
+        ...
+    - pattern-inside: |
+        $TAR = tarfile.TarFile(...)
+        ...
+    - pattern-inside: |
+        with tarfile.open(...) as $TAR:
+          ...
+    - pattern-inside: |
+        with tarfile.TarFile(...) as $TAR:
+          ...
+    - pattern: tarfile.open(...).extractall(...)
+  - pattern-not: $TAR.$EXTRACT(..., filter="data", ...)
+  - pattern-not: $TAR.$EXTRACT(..., filter="tar", ...)
+  - pattern-not: $TAR.$EXTRACT(..., filter=tarfile.data_filter, ...)
+  - pattern-not: $TAR.$EXTRACT(..., filter=tarfile.tar_filter, ...)
+  - pattern-not: tarfile.open(...).extractall(..., filter="data", ...)
+  - pattern-not-inside: |
+      $TAR.extraction_filter = ...
+      ...

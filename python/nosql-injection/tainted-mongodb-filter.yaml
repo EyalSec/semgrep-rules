@@ -1,0 +1,106 @@
+rules:
+- id: tainted-mongodb-filter
+  message: >-
+    A value from a JSON request body is placed in a MongoDB query without
+    checking its type. A client can send an object instead of a string, such as
+    {"$ne": ""} for a password, and the query matches every document. Check
+    that each value is the type you expect (isinstance(value, str)) or convert
+    it with str() before building the filter.
+  metadata:
+    category: security
+    subcategory:
+    - vuln
+    cwe:
+    - "CWE-943: Improper Neutralization of Special Elements in Data Query Logic"
+    owasp:
+    - "A03:2021 - Injection"
+    - "A05:2025 - Injection"
+    technology:
+    - python
+    - pymongo
+    - mongodb
+    - flask
+    - fastapi
+    - django
+    references:
+    - https://eyalsec.com/vulnerabilities/nosql-injection
+    - https://eyalsec.com/vulnerabilities/nosql-injection/flask
+    - https://eyalsec.com/vulnerabilities/nosql-injection/fastapi
+    likelihood: MEDIUM
+    impact: HIGH
+    confidence: MEDIUM
+    vulnerability_class:
+    - Improper Validation
+  languages:
+  - python
+  severity: ERROR
+  mode: taint
+  pattern-sources:
+  # Only a parsed JSON body can carry a dict such as {"$ne": ""}. Query strings,
+  # form fields and path parameters are always strings.
+  - pattern: flask.request.json
+  - pattern: flask.request.get_json(...)
+  - patterns:
+    - pattern-either:
+      - pattern: request.$ATTR
+      - pattern: self.request.$ATTR
+    - metavariable-regex:
+        metavariable: $ATTR
+        regex: ^(data|body)$
+  - pattern: request.json(...)
+  - patterns:
+    - pattern-either:
+      - pattern-inside: |
+          @$APP.$ROUTE(...)
+          def $FUNC(..., $PARAM: $TYPE, ...):
+            ...
+      - pattern-inside: |
+          @$APP.$ROUTE(...)
+          async def $FUNC(..., $PARAM: $TYPE, ...):
+            ...
+    - metavariable-regex:
+        metavariable: $ROUTE
+        regex: ^(get|post|put|patch|delete|api_route)$
+    - metavariable-regex:
+        metavariable: $TYPE
+        regex: ^(dict|Dict|Dict\[.*\]|dict\[.*\]|Any|typing\.Any|Json|Body)$
+    - focus-metavariable: $PARAM
+  pattern-sanitizers:
+  # Conversions to a number or a UUID.
+  - pattern-either:
+    - pattern: int(...)
+    - pattern: float(...)
+    - pattern: len(...)
+    - pattern: uuid.UUID(...)
+  # Looking the value up in a constant table (ALLOWED[name], ALLOWED.get(name))
+  # replaces it with a value chosen by the code.
+  - patterns:
+    - pattern-either:
+      - pattern: $TABLE[$KEY]
+      - pattern: $TABLE.get($KEY, ...)
+    - metavariable-regex:
+        metavariable: $TABLE
+        regex: ^[A-Z][A-Z0-9_]*$
+  # A membership test (if name in ALLOWED / if name not in ALLOWED) is how an
+  # allowlist is written; treat the value as checked from there on.
+  - by-side-effect: true
+    patterns:
+    - pattern-either:
+      - pattern: $VALUE in $ALLOWED
+      - pattern: $VALUE not in $ALLOWED
+    - focus-metavariable: $VALUE
+  - pattern-either:
+    - pattern: str(...)
+    - pattern: bson.ObjectId(...)
+    - pattern: bson.objectid.ObjectId(...)
+  pattern-sinks:
+  - patterns:
+    - pattern-either:
+      - pattern: '$COLL.find({...}, ...)'
+      - pattern: '$COLL.find_one({...}, ...)'
+      - patterns:
+        - pattern: $COLL.$METHOD($FILTER, ...)
+        - metavariable-regex:
+            metavariable: $METHOD
+            regex: ^(find_one|find_one_and_update|find_one_and_delete|find_one_and_replace|update_one|update_many|delete_one|delete_many|replace_one|count_documents)$
+        - focus-metavariable: $FILTER

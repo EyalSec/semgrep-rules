@@ -1,0 +1,129 @@
+rules:
+- id: tainted-subprocess-argument
+  message: >-
+    Request data is passed to a program as a command-line argument with no "--"
+    before it. There is no shell, but a value that starts with "-" is read as an
+    option (for example git's --upload-pack=... or curl's -o), which can run
+    code or overwrite files. Put "--" before positional arguments the program
+    accepts, and validate the value, for example that it does not start with
+    "-".
+  metadata:
+    category: security
+    subcategory:
+    - vuln
+    cwe:
+    - "CWE-88: Improper Neutralization of Argument Delimiters in a Command ('Argument Injection')"
+    owasp:
+    - "A03:2021 - Injection"
+    - "A05:2025 - Injection"
+    technology:
+    - python
+    - django
+    - flask
+    - fastapi
+    references:
+    - https://eyalsec.com/vulnerabilities/command-injection
+    - https://cwe.mitre.org/data/definitions/88.html
+    likelihood: LOW
+    impact: HIGH
+    confidence: LOW
+    vulnerability_class:
+    - Command Injection
+  languages:
+  - python
+  severity: WARNING
+  mode: taint
+  pattern-sources:
+  # Flask: anything read from the request object.
+  - pattern: flask.request.$ANY
+  # Django, Django REST framework, Starlette and FastAPI request objects.
+  - patterns:
+    - pattern-either:
+      - pattern: request.$ATTR
+      - pattern: self.request.$ATTR
+    - metavariable-regex:
+        metavariable: $ATTR
+        regex: ^(GET|POST|COOKIES|META|FILES|body|headers|data|query_params|path_params|cookies|args|form|values|files|view_args)$
+  - patterns:
+    - pattern-either:
+      - pattern: request.$METHOD(...)
+      - pattern: self.request.$METHOD(...)
+    - metavariable-regex:
+        metavariable: $METHOD
+        regex: ^(json|form|body|get_json|get_data|stream)$
+  # Flask and FastAPI route parameters (path, query and body parameters).
+  - patterns:
+    - pattern-either:
+      - pattern-inside: |
+          @$APP.$ROUTE(...)
+          def $FUNC(..., $PARAM, ...):
+            ...
+      - pattern-inside: |
+          @$APP.$ROUTE(...)
+          async def $FUNC(..., $PARAM, ...):
+            ...
+    - metavariable-regex:
+        metavariable: $ROUTE
+        regex: ^(route|get|post|put|patch|delete|api_route|websocket)$
+    - focus-metavariable: $PARAM
+    # FastAPI dependencies (a database session, the current user) are not input.
+    - pattern-not-inside: |
+        def $FUNC(..., $PARAM: $TYPE = Depends(...), ...):
+          ...
+    - pattern-not-inside: |
+        def $FUNC(..., $PARAM = Depends(...), ...):
+          ...
+    - pattern-not-inside: |
+        async def $FUNC(..., $PARAM: $TYPE = Depends(...), ...):
+          ...
+    - pattern-not-inside: |
+        def $FUNC(..., $PARAM: $TYPE = Security(...), ...):
+          ...
+    - pattern-not-inside: |
+        async def $FUNC(..., $PARAM: $TYPE = Security(...), ...):
+          ...
+  # Django URL parameters: the arguments after `request` in a view.
+  - patterns:
+    - pattern-inside: |
+        def $VIEW(request, ..., $PARAM, ...):
+          ...
+    - focus-metavariable: $PARAM
+    - metavariable-regex:
+        metavariable: $VIEW
+        regex: ^(?!test_)
+    - metavariable-regex:
+        metavariable: $PARAM
+        regex: ^(?!(self|request|args|kwargs)$)
+  pattern-sanitizers:
+  # Conversions to a number or a UUID.
+  - pattern-either:
+    - pattern: int(...)
+    - pattern: float(...)
+    - pattern: len(...)
+    - pattern: uuid.UUID(...)
+  # Looking the value up in a constant table (ALLOWED[name], ALLOWED.get(name))
+  # replaces it with a value chosen by the code.
+  - patterns:
+    - pattern-either:
+      - pattern: $TABLE[$KEY]
+      - pattern: $TABLE.get($KEY, ...)
+    - metavariable-regex:
+        metavariable: $TABLE
+        regex: ^[A-Z][A-Z0-9_]*$
+  # A membership test (if name in ALLOWED / if name not in ALLOWED) is how an
+  # allowlist is written; treat the value as checked from there on.
+  - by-side-effect: true
+    patterns:
+    - pattern-either:
+      - pattern: $VALUE in $ALLOWED
+      - pattern: $VALUE not in $ALLOWED
+    - focus-metavariable: $VALUE
+  pattern-sinks:
+  - patterns:
+    - pattern-either:
+      - pattern: subprocess.$FUNC([$PROG, ..., $ARG, ...], ...)
+      - pattern: asyncio.create_subprocess_exec($PROG, ..., $ARG, ...)
+    - pattern-not: subprocess.$FUNC([$PROG, ..., "--", ..., $ARG, ...], ...)
+    - pattern-not: asyncio.create_subprocess_exec($PROG, ..., "--", ..., $ARG, ...)
+    - pattern-not: subprocess.$FUNC([...], ..., shell=True, ...)
+    - focus-metavariable: $ARG
