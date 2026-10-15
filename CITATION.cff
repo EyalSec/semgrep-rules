@@ -1,0 +1,30 @@
+# Citation metadata. GitHub reads this file for the "Cite this repository"
+# button, and Zenodo reads it when it archives a GitHub release.
+cff-version: 1.2.0
+message: "If you use these rules in research or a benchmark, please cite them as below."
+type: software
+title: "EyalSec Semgrep rules for Python"
+abstract: >-
+  Semgrep rules that find request data reaching a SQL query, a shell command,
+  a deserializer, a file path or an outbound URL in Django, Flask and FastAPI
+  code. Each rule has a test file, CWE and OWASP metadata, and a link to a page
+  that explains the vulnerability class and its fix.
+authors:
+  - given-names: Eyal
+    family-names: Gabay
+    affiliation: EyalSec
+    email: eyal@eyalsec.com
+license: MIT
+repository-code: "https://github.com/EyalSec/semgrep-rules"
+url: "https://eyalsec.com"
+keywords:
+  - semgrep
+  - static analysis
+  - application security
+  - python
+  - django
+  - flask
+  - fastapi
+  - sql injection
+  - command injection
+  - ssrf
